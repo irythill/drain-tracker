@@ -71,6 +71,18 @@ export function adicionaMeses(data: DataISO, meses: number): DataISO {
   return monta(anoDestino, mesDestino, Math.min(dia, diasNoMes(anoDestino, mesDestino)));
 }
 
+/**
+ * Dia civil de hoje, no calendário local de quem roda o processo.
+ *
+ * Diferente de `parseDataPlanilha`, que lê data em UTC porque o ExcelJS
+ * entrega meia-noite UTC — aqui o `Date` já representa "agora" no fuso
+ * local, então os componentes locais (`getFullYear`/`getMonth`/`getDate`)
+ * são os corretos, não os UTC.
+ */
+export function hojeISO(agora: Date = new Date()): DataISO {
+  return monta(agora.getFullYear(), agora.getMonth() + 1, agora.getDate());
+}
+
 /** Primeiro dia do mês. */
 export function inicioDoMes(ano: number, mes: number): DataISO {
   if (!Number.isInteger(mes) || mes < 1 || mes > 12) {

@@ -3,10 +3,18 @@ import {
   adicionaMeses,
   ehDataISO,
   fimDoMes,
+  hojeISO,
   inicioDoMes,
   parseDataBR,
   parseDataPlanilha,
 } from "@/lib/data";
+
+describe("hojeISO", () => {
+  it("converte um Date local para YYYY-MM-DD usando o dia do calendário local", () => {
+    expect(hojeISO(new Date(2026, 8, 7, 23, 0, 0))).toBe("2026-09-07");
+    expect(hojeISO(new Date(2026, 0, 1, 0, 0, 0))).toBe("2026-01-01");
+  });
+});
 
 describe("adicionaMeses", () => {
   // Casos 4 e 5 da §10 — saturação no último dia do mês de destino.
