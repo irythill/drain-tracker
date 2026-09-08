@@ -56,6 +56,24 @@ const PRIMEIRA_LINHA_LANCAMENTOS = 6;
  */
 type Db = typeof DbClient;
 
+/**
+ * O rollback compensatório em si falhou depois de um erro de gravação — o
+ * banco pode ter ficado com registros parciais desta execução. Diferente de
+ * um rollback que funcionou (onde "nada ficou gravado" é verdade), esse
+ * caso precisa de uma mensagem que não minta sobre o estado do banco.
+ */
+class ErroRollbackFalhou extends Error {
+  constructor(
+    public readonly erroOriginal: unknown,
+    public readonly erroDesfazer: unknown,
+  ) {
+    super(
+      "Rollback falhou depois de um erro de gravação — o banco pode ter ficado " +
+        "com registros parciais desta execução. Verifique manualmente.",
+    );
+  }
+}
+
 function normalizar(nome: string): string {
   return nome.trim().toLowerCase();
 }
@@ -269,11 +287,7 @@ async function materializar(params: {
     try {
       await desfazer(db, ids);
     } catch (erroDesfazer) {
-      throw new Error(
-        "Rollback falhou depois de um erro de gravação — o banco pode ter ficado " +
-          "com registros parciais desta execução. Verifique manualmente.",
-        { cause: { erroOriginal: erro, erroDesfazer } },
-      );
+      throw new ErroRollbackFalhou(erro, erroDesfazer);
     }
     throw erro;
   }
@@ -395,10 +409,19 @@ async function main(): Promise<void> {
       // (criados, dívidas, [COMMIT]) descrevem o que a simulação em memória
       // decidiu, não o que sobrou no banco depois do rollback — imprimir
       // como se fosse o relatório normal mentiria sobre o que foi persistido.
-      console.error(
-        `Importação para "${arquivo}" FALHOU e foi desfeita — nada ficou gravado.`,
-      );
-      console.error(erro);
+      if (erro instanceof ErroRollbackFalhou) {
+        console.error(
+          `Importação para "${arquivo}" FALHOU e o ROLLBACK TAMBÉM FALHOU — ` +
+            "o banco pode ter registros parciais desta execução. Verifique manualmente.",
+        );
+        console.error("Erro original:", erro.erroOriginal);
+        console.error("Erro do rollback:", erro.erroDesfazer);
+      } else {
+        console.error(
+          `Importação para "${arquivo}" FALHOU e foi desfeita — nada ficou gravado.`,
+        );
+        console.error(erro);
+      }
       process.exitCode = 1;
       return;
     }
