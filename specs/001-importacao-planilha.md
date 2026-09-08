@@ -1,6 +1,6 @@
 # 001 — Importação da planilha
 
-**Status:** Aprovada — validada contra `FINANÇAS_ULTIMATE_v3.xlsx` em 2026-09-07
+**Status:** Concluída — implementada e validada de ponta a ponta em 2026-09-07
 **Tipo:** Spec-first (descartável após o merge)
 **Depende de:** `specs/dominio-financeiro.md`, `specs/data-model.md`
 
@@ -245,21 +245,27 @@ Erros (0)
 
 ## Critérios de conclusão
 
-- [ ] `pnpm import:xlsx <arquivo>` roda em dry-run sem tocar o banco
-- [ ] 35 lançamentos importados do arquivo de referência
-- [ ] Total de despesas de setembro/2026 = **R$ 3.095,98** — não R$ 3.095,96,
+- [x] `pnpm import:xlsx <arquivo>` roda em dry-run sem tocar o banco
+- [x] 35 lançamentos importados do arquivo de referência
+- [x] Total de despesas de setembro/2026 = **R$ 3.095,98** — não R$ 3.095,96,
       que é o total que a planilha exibe somando os floats crus e
       arredondando só no fim; a R4 manda arredondar cada lançamento antes de
       gravar, e 5 lançamentos deste arquivo (`150.475`, `51.875`, `196.665`,
       `39.905`, `27.975`, todos com terceira casa `5`) arredondam para cima
       individualmente, batendo 2 centavos a mais que o agregado
-- [ ] Total de receitas de setembro/2026 = **R$ 2.149,00**
-- [ ] 2 dívidas importadas, total R$ 6.951,99
-- [ ] Rodar duas vezes com `--commit` cria duas `importacoes` distintas
+- [x] Total de receitas de setembro/2026 = **R$ 2.149,00**
+- [x] 2 dívidas importadas, total R$ 6.951,99
+- [x] Rodar duas vezes com `--commit` cria duas `importacoes` distintas
       (dedupe **não** é requisito — desfazer é o mecanismo)
-- [ ] Linha com data inválida não derruba a execução
-- [ ] Teste com planilha sintética cobrindo: fórmula, data em texto, valor
+- [x] Linha com data inválida não derruba a execução
+- [x] Teste com planilha sintética cobrindo: fórmula, data em texto, valor
       com 3 casas, linha vazia, enum inválido, tipo incoerente
+
+Todos os critérios acima foram validados manualmente contra um Postgres
+descartável (Docker) e o arquivo real `FINANÇAS_ULTIMATE_v3.xlsx` em
+2026-09-07 — incluindo o caminho de rollback (erro fatal forçado via
+violação de `CHECK`, confirmado que desfaz conta/categoria/lançamentos
+órfãos). Ver `lib/importacao*.test.ts` para a cobertura automatizada.
 
 ## Fora de escopo
 
