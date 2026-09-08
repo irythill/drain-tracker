@@ -276,6 +276,32 @@ describe("processarLinhaLancamento", () => {
     expect(criarConta).not.toHaveBeenCalled();
   });
 
+  it("resolve categoria pelo par (nome, tipo da linha), permitindo o mesmo nome em ambos os tipos (ex: Outros)", () => {
+    const buscarCategoria: BuscarCategoria = (nome, tipoLinha) => {
+      if (nome !== "Outros") return null;
+      return tipoLinha === "despesa"
+        ? { id: 1, tipo: "despesa", grupo: "desejo" }
+        : { id: 2, tipo: "receita", grupo: null };
+    };
+
+    const despesa = processarLinhaLancamento(
+      linhaBase({ categoria: "Outros", tipo: "Despesa" }),
+      deps({ buscarCategoria }),
+    );
+    const receita = processarLinhaLancamento(
+      linhaBase({ categoria: "Outros", tipo: "Receita" }),
+      deps({ buscarCategoria }),
+    );
+
+    expect(despesa.ok).toBe(true);
+    if (!despesa.ok) throw new Error("esperava sucesso");
+    expect(despesa.lancamento.categoriaId).toBe(1);
+
+    expect(receita.ok).toBe(true);
+    if (!receita.ok) throw new Error("esperava sucesso");
+    expect(receita.lancamento.categoriaId).toBe(2);
+  });
+
   it("não cria conta nem categoria quando a descrição está vazia", () => {
     const criarConta = vi.fn(() => 1);
     const criarCategoria = vi.fn(() => 1);

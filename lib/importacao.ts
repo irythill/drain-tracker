@@ -99,7 +99,17 @@ export interface CategoriaExistente {
 
 export type BuscarConta = (nome: string) => number | null;
 export type CriarConta = (nome: string) => number;
-export type BuscarCategoria = (nome: string) => CategoriaExistente | null;
+/**
+ * Busca a categoria relevante para esta linha. O nome sozinho não é chave
+ * única — o schema permite "Outros" tanto em despesa quanto em receita
+ * (`specs/data-model.md`) — então quem implementa deve tentar o par exato
+ * (nome, tipoLinha) primeiro e só cair para outro tipo do mesmo nome depois
+ * — que é o caso que R7 quer pegar como incoerência.
+ */
+export type BuscarCategoria = (
+  nome: string,
+  tipoLinha: TipoTransacao,
+) => CategoriaExistente | null;
 export type CriarCategoria = (
   nome: string,
   tipo: TipoTransacao,
@@ -163,7 +173,7 @@ function buscarCategoriaCoerente(
   tipoLinha: TipoTransacao,
   deps: Pick<DependenciasResolucao, "buscarCategoria">,
 ): { existente: CategoriaExistente | null } | { erro: string } {
-  const existente = deps.buscarCategoria(nome);
+  const existente = deps.buscarCategoria(nome, tipoLinha);
   if (existente !== null && existente.tipo !== tipoLinha) {
     return {
       erro: `categoria "${nome}" é do tipo "${existente.tipo}", linha é "${tipoLinha}"`,
