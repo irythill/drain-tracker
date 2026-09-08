@@ -228,8 +228,8 @@ Lançamentos
   com erro .................. 0
 
 Receitas ..... R$ 2.149,00
-Despesas ..... R$ 3.095,96
-Saldo ........ -R$ 946,96
+Despesas ..... R$ 3.095,98
+Saldo ........ -R$ 946,98
 
 Dívidas: 2 criadas, total R$ 6.951,99
 
@@ -247,7 +247,12 @@ Erros (0)
 
 - [ ] `pnpm import:xlsx <arquivo>` roda em dry-run sem tocar o banco
 - [ ] 35 lançamentos importados do arquivo de referência
-- [ ] Total de despesas de setembro/2026 = **R$ 3.095,96**
+- [ ] Total de despesas de setembro/2026 = **R$ 3.095,98** — não R$ 3.095,96,
+      que é o total que a planilha exibe somando os floats crus e
+      arredondando só no fim; a R4 manda arredondar cada lançamento antes de
+      gravar, e 5 lançamentos deste arquivo (`150.475`, `51.875`, `196.665`,
+      `39.905`, `27.975`, todos com terceira casa `5`) arredondam para cima
+      individualmente, batendo 2 centavos a mais que o agregado
 - [ ] Total de receitas de setembro/2026 = **R$ 2.149,00**
 - [ ] 2 dívidas importadas, total R$ 6.951,99
 - [ ] Rodar duas vezes com `--commit` cria duas `importacoes` distintas
