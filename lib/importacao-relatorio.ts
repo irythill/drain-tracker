@@ -4,6 +4,7 @@
  */
 
 import { formatarBRL } from "@/lib/dinheiro";
+import type { ResultadoLinhaDivida, ResultadoLinhaLancamento } from "@/lib/importacao";
 
 export interface ContadoresLancamentos {
   criados: number;
@@ -25,6 +26,65 @@ export interface DadosRelatorio {
   dividas: ResumoDividas;
   avisos: string[];
   erros: string[];
+}
+
+export interface ParametrosMontagemRelatorio {
+  arquivo: string;
+  modo: "DRY-RUN" | "COMMIT";
+  ignoradas: number;
+  resultadosLancamentos: ResultadoLinhaLancamento[];
+  resultadosDividas: (ResultadoLinhaDivida | null)[];
+}
+
+/**
+ * Agrega os resultados de todas as linhas processadas nos números do
+ * relatório final (R12). Função pura — não sabe nada sobre banco ou xlsx.
+ */
+export function montarDadosRelatorio(params: ParametrosMontagemRelatorio): DadosRelatorio {
+  const avisos: string[] = [];
+  const erros: string[] = [];
+  let criados = 0;
+  let comErro = 0;
+  let totalReceitasCentavos = 0;
+  let totalDespesasCentavos = 0;
+
+  for (const resultado of params.resultadosLancamentos) {
+    if (!resultado.ok) {
+      comErro++;
+      erros.push(`linha ${resultado.linha}  ${resultado.erro}`);
+      continue;
+    }
+    criados++;
+    avisos.push(...resultado.avisos);
+    if (resultado.lancamento.tipo === "receita") {
+      totalReceitasCentavos += resultado.lancamento.valorCentavos;
+    } else {
+      totalDespesasCentavos += resultado.lancamento.valorCentavos;
+    }
+  }
+
+  let dividasCriadas = 0;
+  let dividasTotalCentavos = 0;
+  for (const resultado of params.resultadosDividas) {
+    if (resultado === null) continue;
+    if (!resultado.ok) {
+      erros.push(`linha ${resultado.linha}  ${resultado.erro}`);
+      continue;
+    }
+    dividasCriadas++;
+    dividasTotalCentavos += resultado.divida.valorTotalCentavos;
+  }
+
+  return {
+    arquivo: params.arquivo,
+    modo: params.modo,
+    lancamentos: { criados, ignorados: params.ignoradas, comErro },
+    totalReceitasCentavos,
+    totalDespesasCentavos,
+    dividas: { criadas: dividasCriadas, totalCentavos: dividasTotalCentavos },
+    avisos,
+    erros,
+  };
 }
 
 export function formatarRelatorio(dados: DadosRelatorio): string {
