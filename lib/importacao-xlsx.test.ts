@@ -133,4 +133,18 @@ describe("lerLinhasDividas", () => {
     expect(linhas[0]).toMatchObject({ pessoa: "MÃE", valorTotal: 3404.47, jaPago: 0 });
     expect(linhas[1]).toMatchObject({ pessoa: "MATEUS", valorTotal: 3547.52 });
   });
+
+  it("célula 'já pago' vazia vira zero, mas texto solto vira NaN (não fica em silêncio)", () => {
+    const ws = planilhaDividas();
+    celula(ws, 6, 2, "MÃE");
+    celula(ws, 6, 3, 100);
+    // coluna "já pago" em branco
+    celula(ws, 7, 2, "MATEUS");
+    celula(ws, 7, 3, 100);
+    celula(ws, 7, 4, "-"); // placeholder não numérico, não deve virar 0 silenciosamente
+
+    const linhas = lerLinhasDividas(ws);
+    expect(linhas[0]).toMatchObject({ pessoa: "MÃE", jaPago: 0 });
+    expect(linhas[1]!.jaPago).toBeNaN();
+  });
 });

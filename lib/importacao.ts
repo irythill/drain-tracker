@@ -302,23 +302,50 @@ export interface DividaImportada {
   pagamentoInicial: { data: DataISO; valorCentavos: number } | null;
 }
 
+export type ResultadoLinhaDivida =
+  | { ok: true; divida: DividaImportada }
+  | { ok: false; linha: number; erro: string };
+
 /**
  * Processa uma linha da aba Dívidas (R11). Retorna `null` quando a linha
  * não tem pessoa preenchida — nesse caso ela é ignorada, não é erro.
+ *
+ * Valores não numéricos em "valor total" ou "já pago" viram erro explícito,
+ * não são silenciosamente tratados como zero: `Number("-") > 0` é `false`,
+ * e trocar isso por um `NaN` sem aviso apagaria um pagamento real em
+ * silêncio (a mesma classe de bug que perdeu R$ 406,28 na planilha original).
  */
 export function processarLinhaDivida(
   bruta: LinhaDividaBruta,
   dataImportacao: DataISO,
-): DividaImportada | null {
+): ResultadoLinhaDivida | null {
   const pessoa = String(bruta.pessoa ?? "").trim();
   if (!pessoa) return null;
 
+  if (!Number.isFinite(bruta.valorTotal)) {
+    return {
+      ok: false,
+      linha: bruta.linha,
+      erro: `valor total da dívida inválido: "${bruta.valorTotal}"`,
+    };
+  }
+  if (!Number.isFinite(bruta.jaPago)) {
+    return {
+      ok: false,
+      linha: bruta.linha,
+      erro: `valor "já pago" inválido: "${bruta.jaPago}"`,
+    };
+  }
+
   return {
-    pessoa,
-    valorTotalCentavos: paraCentavos(bruta.valorTotal),
-    pagamentoInicial:
-      bruta.jaPago > 0
-        ? { data: dataImportacao, valorCentavos: paraCentavos(bruta.jaPago) }
-        : null,
+    ok: true,
+    divida: {
+      pessoa,
+      valorTotalCentavos: paraCentavos(bruta.valorTotal),
+      pagamentoInicial:
+        bruta.jaPago > 0
+          ? { data: dataImportacao, valorCentavos: paraCentavos(bruta.jaPago) }
+          : null,
+    },
   };
 }

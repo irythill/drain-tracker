@@ -302,9 +302,12 @@ describe("processarLinhaDivida (R11)", () => {
       "2026-09-07",
     );
     expect(resultado).toEqual({
-      pessoa: "MÃE",
-      valorTotalCentavos: 340447,
-      pagamentoInicial: null,
+      ok: true,
+      divida: {
+        pessoa: "MÃE",
+        valorTotalCentavos: 340447,
+        pagamentoInicial: null,
+      },
     });
   });
 
@@ -314,14 +317,41 @@ describe("processarLinhaDivida (R11)", () => {
       "2026-09-07",
     );
     expect(resultado).toEqual({
-      pessoa: "MATEUS",
-      valorTotalCentavos: 354752,
-      pagamentoInicial: { data: "2026-09-07", valorCentavos: 50050 },
+      ok: true,
+      divida: {
+        pessoa: "MATEUS",
+        valorTotalCentavos: 354752,
+        pagamentoInicial: { data: "2026-09-07", valorCentavos: 50050 },
+      },
     });
   });
 
   it("linha sem pessoa é ignorada", () => {
     expect(processarLinhaDivida({ linha: 8, pessoa: "", valorTotal: 0, jaPago: 0 }, "2026-09-07")).toBeNull();
     expect(processarLinhaDivida({ linha: 8, pessoa: null, valorTotal: 0, jaPago: 0 }, "2026-09-07")).toBeNull();
+  });
+
+  it("valor total não numérico gera erro em vez de quebrar a importação", () => {
+    const resultado = processarLinhaDivida(
+      { linha: 9, pessoa: "ALGUÉM", valorTotal: Number.NaN, jaPago: 0 },
+      "2026-09-07",
+    );
+    expect(resultado).toEqual({
+      ok: false,
+      linha: 9,
+      erro: expect.stringContaining("valor total"),
+    });
+  });
+
+  it("já pago não numérico gera erro em vez de descartar o pagamento em silêncio", () => {
+    const resultado = processarLinhaDivida(
+      { linha: 10, pessoa: "ALGUÉM", valorTotal: 100, jaPago: Number.NaN },
+      "2026-09-07",
+    );
+    expect(resultado).toEqual({
+      ok: false,
+      linha: 10,
+      erro: expect.stringContaining("já pago"),
+    });
   });
 });

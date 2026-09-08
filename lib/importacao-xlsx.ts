@@ -82,6 +82,18 @@ export function lerLinhasLancamentos(
 
 const COLUNAS_DIVIDAS = { pessoa: 2, valorTotal: 3, jaPago: 4 } as const;
 
+/**
+ * Converte para número, tratando célula vazia como zero. Um valor presente
+ * mas não numérico (texto solto, por exemplo) vira `NaN` propositalmente —
+ * cabe a `processarLinhaDivida` rejeitar isso como erro, não a esta função
+ * mascarar em zero.
+ */
+function numeroOuZero(valor: unknown): number {
+  if (typeof valor === "number") return valor;
+  if (valor === null || valor === undefined || valor === "") return 0;
+  return Number(valor);
+}
+
 /** Lê a aba Dívidas, linhas 6–15; só é dado o que tem pessoa (B) (R11). */
 export function lerLinhasDividas(
   worksheet: Worksheet,
@@ -100,8 +112,8 @@ export function lerLinhasDividas(
     linhas.push({
       linha,
       pessoa,
-      valorTotal: typeof valorTotal === "number" ? valorTotal : Number(valorTotal),
-      jaPago: typeof jaPago === "number" ? jaPago : Number(jaPago ?? 0),
+      valorTotal: numeroOuZero(valorTotal),
+      jaPago: numeroOuZero(jaPago),
     });
   }
 
