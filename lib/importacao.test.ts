@@ -256,6 +256,43 @@ describe("processarLinhaLancamento", () => {
     if (resultado.ok) throw new Error("esperava erro");
     expect(resultado.erro).toContain("Salário");
   });
+
+  it("não cria conta quando a linha é rejeitada por incoerência de tipo (R7)", () => {
+    const criarConta = vi.fn(() => 1);
+    const buscarCategoria: BuscarCategoria = (nome) =>
+      nome === "Salário" ? { id: 1, tipo: "receita", grupo: null } : null;
+
+    const resultado = processarLinhaLancamento(
+      linhaBase({
+        conta: "Conta Nova",
+        tipo: "Despesa",
+        categoria: "Salário",
+        valor: 100,
+      }),
+      deps({ buscarCategoria, criarConta }),
+    );
+
+    expect(resultado.ok).toBe(false);
+    expect(criarConta).not.toHaveBeenCalled();
+  });
+
+  it("não cria conta nem categoria quando a descrição está vazia", () => {
+    const criarConta = vi.fn(() => 1);
+    const criarCategoria = vi.fn(() => 1);
+
+    const resultado = processarLinhaLancamento(
+      linhaBase({
+        conta: "Banco Novo",
+        categoria: "Categoria Nova",
+        descricao: "   ",
+      }),
+      deps({ criarConta, criarCategoria }),
+    );
+
+    expect(resultado.ok).toBe(false);
+    expect(criarConta).not.toHaveBeenCalled();
+    expect(criarCategoria).not.toHaveBeenCalled();
+  });
 });
 
 describe("processarLinhaDivida (R11)", () => {

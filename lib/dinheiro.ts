@@ -12,18 +12,33 @@
  *
  * A terceira casa decimal `>= 5` arredonda para cima.
  */
+/** Casas decimais de `|valor|`, recuperadas via string para fugir do float. */
+function casasDecimais(valor: number): string {
+  const [, decimais = ""] = Math.abs(valor).toFixed(10).split(".");
+  return decimais;
+}
+
 export function paraCentavos(valor: number): number {
   if (!Number.isFinite(valor)) {
     throw new Error(`Valor monetário inválido: ${valor}`);
   }
 
-  const s = valor.toFixed(10); // recupera a decimal pretendida
-  const negativo = s.startsWith("-");
-  const [inteiro, decimais = ""] = (negativo ? s.slice(1) : s).split(".");
+  const negativo = valor < 0;
+  const decimais = casasDecimais(valor);
+  const inteiro = Math.trunc(Math.abs(valor));
   const centavos = Number(decimais.slice(0, 2).padEnd(2, "0"));
   const terceira = Number(decimais[2] ?? "0");
-  const total = Number(inteiro) * 100 + centavos + (terceira >= 5 ? 1 : 0);
+  const total = inteiro * 100 + centavos + (terceira >= 5 ? 1 : 0);
   return negativo ? -total : total;
+}
+
+/**
+ * Verdadeiro quando `valor` tem alguma casa decimal além da segunda —
+ * ou seja, quando `paraCentavos` precisou descartar ou arredondar dígitos.
+ * Usado pelo importador (R4) para decidir quando emitir aviso.
+ */
+export function houveArredondamento(valor: number): boolean {
+  return casasDecimais(valor).slice(2).replace(/0+$/, "").length > 0;
 }
 
 /**

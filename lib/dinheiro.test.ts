@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { dividirCentavos, formatarBRL, paraCentavos } from "@/lib/dinheiro";
+import {
+  dividirCentavos,
+  formatarBRL,
+  houveArredondamento,
+  paraCentavos,
+} from "@/lib/dinheiro";
 
 describe("paraCentavos", () => {
   // Casos 0 e 0b da §10 — a razão de `Math.round(v * 100)` ser proibido.
@@ -38,6 +43,32 @@ describe("paraCentavos", () => {
   it("rejeita entrada que não é número finito", () => {
     expect(() => paraCentavos(Number.NaN)).toThrow();
     expect(() => paraCentavos(Number.POSITIVE_INFINITY)).toThrow();
+  });
+});
+
+describe("houveArredondamento", () => {
+  it("valores com até duas casas decimais não sofrem arredondamento", () => {
+    expect(houveArredondamento(54.45)).toBe(false);
+    expect(houveArredondamento(0)).toBe(false);
+    expect(houveArredondamento(2299 - 150)).toBe(false);
+  });
+
+  it("valores com terceira casa decimal sofrem arredondamento", () => {
+    expect(houveArredondamento(300.95 / 2)).toBe(true);
+    expect(houveArredondamento(1.005)).toBe(true);
+    expect(houveArredondamento(2.675)).toBe(true);
+  });
+
+  it.each([
+    [1.005, true],
+    [8.165, true],
+    [2.675, true],
+    [150.475, true],
+    [0.005, true],
+    [188.93, false],
+    [54.45, false],
+  ])("%f → houveArredondamento %s (casos obrigatórios do R4)", (valor, esperado) => {
+    expect(houveArredondamento(valor)).toBe(esperado);
   });
 });
 

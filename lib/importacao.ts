@@ -8,7 +8,7 @@
  */
 
 import { parseDataPlanilha, type DataISO } from "@/lib/data";
-import { formatarBRL, paraCentavos } from "@/lib/dinheiro";
+import { formatarBRL, houveArredondamento, paraCentavos } from "@/lib/dinheiro";
 
 export type TipoTransacao = "receita" | "despesa";
 export type FormaPagamentoImportada =
@@ -80,13 +80,8 @@ export type ConversaoValor = { centavos: number; aviso: string | null };
  */
 export function converterValorImportado(valor: number, linha: number): ConversaoValor {
   const centavos = paraCentavos(valor);
-  const casasAlemDeDuas = Math.abs(valor)
-    .toFixed(10)
-    .split(".")[1]!
-    .slice(2)
-    .replace(/0+$/, "");
 
-  if (casasAlemDeDuas.length === 0) {
+  if (!houveArredondamento(valor)) {
     return { centavos, aviso: null };
   }
 
@@ -159,20 +154,37 @@ function resolverConta(
   return { id, aviso: `linha ${linha}  conta "${nome}" criada` };
 }
 
-/** Resolve categoria pelo nome, checando coerência de tipo (R5, R7). */
-function resolverCategoria(
+/**
+ * Busca categoria pelo nome e checa coerência de tipo (R7). Não cria nada —
+ * é seguro chamar antes de saber se a linha inteira vai ser aceita.
+ */
+function buscarCategoriaCoerente(
   nome: string,
   tipoLinha: TipoTransacao,
-  linha: number,
-  deps: Pick<DependenciasResolucao, "buscarCategoria" | "criarCategoria">,
-): { id: number; grupo: GrupoOrcamento | null; aviso: string | null } | { erro: string } {
+  deps: Pick<DependenciasResolucao, "buscarCategoria">,
+): { existente: CategoriaExistente | null } | { erro: string } {
   const existente = deps.buscarCategoria(nome);
+  if (existente !== null && existente.tipo !== tipoLinha) {
+    return {
+      erro: `categoria "${nome}" é do tipo "${existente.tipo}", linha é "${tipoLinha}"`,
+    };
+  }
+  return { existente };
+}
+
+/**
+ * Obtém a categoria já resolvida por `buscarCategoriaCoerente`, criando-a
+ * quando não existe (R5). Só deve ser chamada depois que a linha inteira já
+ * foi validada — é o único ponto que pode gravar no banco.
+ */
+function obterOuCriarCategoria(
+  nome: string,
+  tipoLinha: TipoTransacao,
+  existente: CategoriaExistente | null,
+  linha: number,
+  deps: Pick<DependenciasResolucao, "criarCategoria">,
+): { id: number; grupo: GrupoOrcamento | null; aviso: string | null } {
   if (existente !== null) {
-    if (existente.tipo !== tipoLinha) {
-      return {
-        erro: `categoria "${nome}" é do tipo "${existente.tipo}", linha é "${tipoLinha}"`,
-      };
-    }
     return { id: existente.id, grupo: existente.grupo, aviso: null };
   }
 
@@ -231,23 +243,34 @@ export function processarLinhaLancamento(
   if (!nomeConta) {
     return { ok: false, linha, erro: "conta vazia" };
   }
-  const conta = resolverConta(nomeConta, linha, deps);
-  if (conta.aviso) avisos.push(conta.aviso);
 
   const nomeCategoria = String(bruta.categoria ?? "").trim();
   if (!nomeCategoria) {
     return { ok: false, linha, erro: "categoria vazia" };
   }
-  const categoria = resolverCategoria(nomeCategoria, tipo, linha, deps);
-  if ("erro" in categoria) {
-    return { ok: false, linha, erro: categoria.erro };
+  const categoriaBuscada = buscarCategoriaCoerente(nomeCategoria, tipo, deps);
+  if ("erro" in categoriaBuscada) {
+    return { ok: false, linha, erro: categoriaBuscada.erro };
   }
-  if (categoria.aviso) avisos.push(categoria.aviso);
 
   const descricao = String(bruta.descricao ?? "").trim();
   if (!descricao) {
     return { ok: false, linha, erro: "descrição vazia" };
   }
+
+  // A partir daqui a linha está garantidamente aceita — só agora é seguro
+  // criar conta/categoria novas (efeito colateral no banco em --commit).
+  const conta = resolverConta(nomeConta, linha, deps);
+  if (conta.aviso) avisos.push(conta.aviso);
+
+  const categoria = obterOuCriarCategoria(
+    nomeCategoria,
+    tipo,
+    categoriaBuscada.existente,
+    linha,
+    deps,
+  );
+  if (categoria.aviso) avisos.push(categoria.aviso);
 
   return {
     ok: true,
