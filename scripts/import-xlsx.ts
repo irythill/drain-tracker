@@ -264,10 +264,17 @@ async function materializar(params: {
         .where(inArray(lancamentos.id, ids.lancamentos));
     }
   } catch (erro) {
-    console.error(
-      "Erro fatal durante a gravação — desfazendo tudo que esta execução criou...",
-    );
-    await desfazer(db, ids);
+    console.error("Erro fatal durante a gravação:", erro);
+    console.error("Desfazendo tudo que esta execução criou...");
+    try {
+      await desfazer(db, ids);
+    } catch (erroDesfazer) {
+      throw new Error(
+        "Rollback falhou depois de um erro de gravação — o banco pode ter ficado " +
+          "com registros parciais desta execução. Verifique manualmente.",
+        { cause: { erroOriginal: erro, erroDesfazer } },
+      );
+    }
     throw erro;
   }
 }
@@ -320,14 +327,30 @@ async function main(): Promise<void> {
   const contasExistentes = await db.select().from(contas);
   const categoriasExistentes = await db.select().from(categorias);
 
+  // A UNIQUE do banco é na string exata; nomes que só diferem em caixa ou
+  // espaço nas pontas colidem só depois de normalizados. Se isso acontecer
+  // (dado sujo anterior a este script), abortar é mais seguro que decidir
+  // silenciosamente qual das duas contas/categorias existentes "vence".
   const resolvedores = criarResolvedores();
-  for (const c of contasExistentes) resolvedores.cacheContas.set(normalizar(c.nome), c.id);
+  for (const c of contasExistentes) {
+    const chave = normalizar(c.nome);
+    if (resolvedores.cacheContas.has(chave)) {
+      throw new Error(
+        `Duas contas no banco só diferem em caixa/espaço: "${c.nome}" colide ` +
+          `com outra já vista como "${chave}". Corrija os dados antes de importar.`,
+      );
+    }
+    resolvedores.cacheContas.set(chave, c.id);
+  }
   for (const c of categoriasExistentes) {
-    resolvedores.cacheCategorias.set(chaveCategoria(c.nome, c.tipo), {
-      id: c.id,
-      tipo: c.tipo,
-      grupo: c.grupo,
-    });
+    const chave = chaveCategoria(c.nome, c.tipo);
+    if (resolvedores.cacheCategorias.has(chave)) {
+      throw new Error(
+        `Duas categorias do mesmo tipo no banco só diferem em caixa/espaço: ` +
+          `"${c.nome}" (${c.tipo}) colide com outra já vista. Corrija os dados antes de importar.`,
+      );
+    }
+    resolvedores.cacheCategorias.set(chave, { id: c.id, tipo: c.tipo, grupo: c.grupo });
   }
 
   // Processamento é 100% síncrono e em memória — commit e dry-run seguem
@@ -368,7 +391,13 @@ async function main(): Promise<void> {
         dataRelatorio,
       });
     } catch (erro) {
-      console.log(formatarRelatorio(dataRelatorio));
+      // Não imprime formatarRelatorio(dataRelatorio) aqui: aqueles números
+      // (criados, dívidas, [COMMIT]) descrevem o que a simulação em memória
+      // decidiu, não o que sobrou no banco depois do rollback — imprimir
+      // como se fosse o relatório normal mentiria sobre o que foi persistido.
+      console.error(
+        `Importação para "${arquivo}" FALHOU e foi desfeita — nada ficou gravado.`,
+      );
       console.error(erro);
       process.exitCode = 1;
       return;
