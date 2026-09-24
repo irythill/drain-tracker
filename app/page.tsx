@@ -1,4 +1,5 @@
-import { Container, Group, Stack, Text, Title } from "@mantine/core";
+import Link from "next/link";
+import { Anchor, Container, Group, Stack, Text, Title } from "@mantine/core";
 import { BotaoSair } from "@/app/login/botao-sair";
 
 export default function HomePage() {
@@ -10,8 +11,11 @@ export default function HomePage() {
           <BotaoSair />
         </Group>
         <Text c="dimmed">
-          Fundação pronta. Painel, lançamentos e importação vêm a seguir.
+          Fundação pronta. Painel e importação vêm a seguir.
         </Text>
+        <Link href="/lancamentos">
+          <Anchor component="span">Ver lançamentos</Anchor>
+        </Link>
       </Stack>
     </Container>
   );
