@@ -1,6 +1,4 @@
-import { config } from "dotenv";
-config({ path: ".env.local" });
-
+import "./carregar-env";
 import { db } from "@/db/client";
 import { categorias, contas } from "@/db/schema";
 import type { NovaCategoria, NovaConta } from "@/db/schema";
@@ -72,7 +70,9 @@ async function main() {
   );
 }
 
-main().catch((erro) => {
-  console.error("Seed falhou:", erro);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((erro) => {
+    console.error("Seed falhou:", erro);
+    process.exit(1);
+  });

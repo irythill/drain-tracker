@@ -364,7 +364,10 @@ async function main(): Promise<void> {
   console.log(formatarRelatorio(dataRelatorio));
 }
 
-main().catch((erro) => {
-  console.error("Importação falhou:", erro);
-  process.exitCode = 1;
-});
+// postgres-js mantém o pool aberto; sem exit explícito o processo não termina.
+main()
+  .catch((erro) => {
+    console.error("Importação falhou:", erro);
+    process.exitCode = 1;
+  })
+  .finally(() => process.exit());
