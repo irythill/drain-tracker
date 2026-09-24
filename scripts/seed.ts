@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { db } from "@/db/client";
 import { categorias, contas } from "@/db/schema";
 import type { NovaCategoria, NovaConta } from "@/db/schema";

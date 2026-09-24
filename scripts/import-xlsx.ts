@@ -9,15 +9,14 @@
  * orquestração da importação. Toda regra de negócio testável vive em
  * `lib/importacao*.ts` — aqui só resolvemos dependências e gravamos.
  *
- * R9 pede atomicidade via transação única, mas o driver do banco usado pelo
- * resto do app (`drizzle-orm/neon-http`) não suporta `db.transaction()` —
- * decisão registrada em conversa com o usuário: em vez de trocar o driver
- * compartilhado só por causa deste script, fazemos rollback manual
- * compensatório (guarda tudo que foi criado nesta execução e desfaz na
- * ordem inversa se um erro fatal ocorrer).
+ * R9 pede atomicidade via transação única — usamos `db.transaction()`
+ * (driver `postgres-js`), que faz rollback de verdade no banco em caso de
+ * erro fatal.
  */
 
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local" });
+
 import { inArray } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import type { db as DbClient } from "@/db/client";
@@ -55,24 +54,6 @@ const PRIMEIRA_LINHA_LANCAMENTOS = 6;
  * de banco.
  */
 type Db = typeof DbClient;
-
-/**
- * O rollback compensatório em si falhou depois de um erro de gravação — o
- * banco pode ter ficado com registros parciais desta execução. Diferente de
- * um rollback que funcionou (onde "nada ficou gravado" é verdade), esse
- * caso precisa de uma mensagem que não minta sobre o estado do banco.
- */
-class ErroRollbackFalhou extends Error {
-  constructor(
-    public readonly erroOriginal: unknown,
-    public readonly erroDesfazer: unknown,
-  ) {
-    super(
-      "Rollback falhou depois de um erro de gravação — o banco pode ter ficado " +
-        "com registros parciais desta execução. Verifique manualmente.",
-    );
-  }
-}
 
 function normalizar(nome: string): string {
   return nome.trim().toLowerCase();
@@ -145,37 +126,14 @@ function criarResolvedores() {
   };
 }
 
-interface IdsCriados {
-  contas: number[];
-  categorias: number[];
-  lancamentos: number[];
-  dividas: number[];
-  pagamentos: number[];
-}
-
-async function desfazer(db: Db, ids: IdsCriados): Promise<void> {
-  if (ids.pagamentos.length) {
-    await db.delete(pagamentosDivida).where(inArray(pagamentosDivida.id, ids.pagamentos));
-  }
-  if (ids.dividas.length) {
-    await db.delete(dividas).where(inArray(dividas.id, ids.dividas));
-  }
-  if (ids.lancamentos.length) {
-    await db.delete(lancamentos).where(inArray(lancamentos.id, ids.lancamentos));
-  }
-  if (ids.categorias.length) {
-    await db.delete(categorias).where(inArray(categorias.id, ids.categorias));
-  }
-  if (ids.contas.length) {
-    await db.delete(contas).where(inArray(contas.id, ids.contas));
-  }
-}
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /**
  * Grava tudo que a simulação em memória decidiu ser necessário: contas e
  * categorias pendentes primeiro (para trocar id temporário por id real),
  * depois lançamentos, depois dívidas/pagamentos, e por fim o registro de
- * `importacoes` com o relatório — backfilling `importacao_id` (R9).
+ * `importacoes` com o relatório — backfilling `importacao_id` (R9). Tudo
+ * dentro de `db.transaction`: qualquer erro faz o Postgres desfazer sozinho.
  */
 async function materializar(params: {
   db: Db;
@@ -186,13 +144,10 @@ async function materializar(params: {
   dividasOk: Extract<ResultadoLinhaDivida, { ok: true }>[];
   dataRelatorio: ReturnType<typeof montarDadosRelatorio>;
 }): Promise<void> {
-  const { db } = params;
-  const ids: IdsCriados = { contas: [], categorias: [], lancamentos: [], dividas: [], pagamentos: [] };
-
-  try {
+  await params.db.transaction(async (tx: Tx) => {
     const idMapContas = new Map<number, number>();
     if (params.pendentesContas.length > 0) {
-      const inseridas = await db
+      const inseridas = await tx
         .insert(contas)
         .values(params.pendentesContas.map((p) => ({ nome: p.nome, tipo: "conta" as const })))
         .returning({ id: contas.id, nome: contas.nome });
@@ -201,13 +156,12 @@ async function materializar(params: {
         const id = porNome.get(normalizar(p.nome));
         if (id === undefined) throw new Error(`falha ao mapear conta criada: "${p.nome}"`);
         idMapContas.set(p.idTemp, id);
-        ids.contas.push(id);
       }
     }
 
     const idMapCategorias = new Map<number, number>();
     if (params.pendentesCategorias.length > 0) {
-      const inseridas = await db
+      const inseridas = await tx
         .insert(categorias)
         .values(params.pendentesCategorias.map((p) => ({ nome: p.nome, tipo: p.tipo, grupo: p.grupo })))
         .returning({ id: categorias.id, nome: categorias.nome, tipo: categorias.tipo });
@@ -216,15 +170,15 @@ async function materializar(params: {
         const id = porChave.get(chaveCategoria(p.nome, p.tipo));
         if (id === undefined) throw new Error(`falha ao mapear categoria criada: "${p.nome}"`);
         idMapCategorias.set(p.idTemp, id);
-        ids.categorias.push(id);
       }
     }
 
     const resolveId = (idTemp: number, mapa: Map<number, number>): number =>
       idTemp < 0 ? mapa.get(idTemp)! : idTemp;
 
+    const idsLancamentos: number[] = [];
     if (params.lancamentosOk.length > 0) {
-      const inseridos = await db
+      const inseridos = await tx
         .insert(lancamentos)
         .values(
           params.lancamentosOk.map((r) => ({
@@ -239,19 +193,18 @@ async function materializar(params: {
           })),
         )
         .returning({ id: lancamentos.id });
-      ids.lancamentos.push(...inseridos.map((l) => l.id));
+      idsLancamentos.push(...inseridos.map((l) => l.id));
     }
 
     for (const r of params.dividasOk) {
-      const [dividaInserida] = await db
+      const [dividaInserida] = await tx
         .insert(dividas)
         .values({ pessoa: r.divida.pessoa, valorTotalCentavos: r.divida.valorTotalCentavos })
         .returning({ id: dividas.id });
       if (!dividaInserida) throw new Error("insert de dívida não retornou id");
-      ids.dividas.push(dividaInserida.id);
 
       if (r.divida.pagamentoInicial) {
-        const [pagamentoInserido] = await db
+        const [pagamentoInserido] = await tx
           .insert(pagamentosDivida)
           .values({
             dividaId: dividaInserida.id,
@@ -260,11 +213,10 @@ async function materializar(params: {
           })
           .returning({ id: pagamentosDivida.id });
         if (!pagamentoInserido) throw new Error("insert de pagamento não retornou id");
-        ids.pagamentos.push(pagamentoInserido.id);
       }
     }
 
-    const [importacaoInserida] = await db
+    const [importacaoInserida] = await tx
       .insert(importacoes)
       .values({
         nomeArquivo: params.arquivo,
@@ -275,22 +227,13 @@ async function materializar(params: {
       .returning({ id: importacoes.id });
     if (!importacaoInserida) throw new Error("insert de importação não retornou id");
 
-    if (ids.lancamentos.length > 0) {
-      await db
+    if (idsLancamentos.length > 0) {
+      await tx
         .update(lancamentos)
         .set({ importacaoId: importacaoInserida.id })
-        .where(inArray(lancamentos.id, ids.lancamentos));
+        .where(inArray(lancamentos.id, idsLancamentos));
     }
-  } catch (erro) {
-    console.error("Erro fatal durante a gravação:", erro);
-    console.error("Desfazendo tudo que esta execução criou...");
-    try {
-      await desfazer(db, ids);
-    } catch (erroDesfazer) {
-      throw new ErroRollbackFalhou(erro, erroDesfazer);
-    }
-    throw erro;
-  }
+  });
 }
 
 async function main(): Promise<void> {
@@ -409,19 +352,10 @@ async function main(): Promise<void> {
       // (criados, dívidas, [COMMIT]) descrevem o que a simulação em memória
       // decidiu, não o que sobrou no banco depois do rollback — imprimir
       // como se fosse o relatório normal mentiria sobre o que foi persistido.
-      if (erro instanceof ErroRollbackFalhou) {
-        console.error(
-          `Importação para "${arquivo}" FALHOU e o ROLLBACK TAMBÉM FALHOU — ` +
-            "o banco pode ter registros parciais desta execução. Verifique manualmente.",
-        );
-        console.error("Erro original:", erro.erroOriginal);
-        console.error("Erro do rollback:", erro.erroDesfazer);
-      } else {
-        console.error(
-          `Importação para "${arquivo}" FALHOU e foi desfeita — nada ficou gravado.`,
-        );
-        console.error(erro);
-      }
+      console.error(
+        `Importação para "${arquivo}" FALHOU e foi desfeita pela transação — nada ficou gravado.`,
+      );
+      console.error(erro);
       process.exitCode = 1;
       return;
     }

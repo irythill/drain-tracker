@@ -10,7 +10,7 @@ de origem, e o comportamento dela é a referência de corretude.
 |---|---|---|
 | Framework | Next.js (App Router) + TypeScript | Server Components + Server Actions |
 | UI | Mantine | `NumberInput`, `@mantine/dates`, `@mantine/form`, `@mantine/charts` |
-| Banco | Postgres (Neon) | |
+| Banco | Postgres (Railway) | |
 | ORM | Drizzle | migrations versionadas em `db/migrations` |
 | Validação | Zod | schema compartilhado entre form e Server Action |
 | Datas | dayjs, locale `pt-BR` | |

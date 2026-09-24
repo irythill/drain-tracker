@@ -23,7 +23,6 @@
     "@mantine/dates": "^9.6.0",
     "@mantine/form": "^9.6.0",
     "@mantine/hooks": "^9.6.0",
-    "@neondatabase/serverless": "^1.1.0",
     "@tabler/icons-react": "^3.46.0",
     "dayjs": "^1.11.23",
     "drizzle-orm": "^0.45.2",
