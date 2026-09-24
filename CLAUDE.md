@@ -69,6 +69,9 @@ Não existe tabela de usuários no v1 e **não** se deve inventar uma.
 As tabelas não têm `usuario_id`; caso vire multiusuário, isso entra por
 migration própria.
 
+Toda Server Action, exceto `entrar`, começa com `await exigirSessao()`
+(`lib/sessao-servidor.ts`) — o proxy não protege IDs de Server Action.
+
 ## Specs
 
 - `specs/dominio-financeiro.md` — regras de negócio. **Spec-anchored**: vive
